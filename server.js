@@ -161,6 +161,15 @@ app.post('/api/admin/reset', (req, res) => {
   res.status(200).json({ message: "Reset complete" });
 });
 
+app.get('/api/kiosk/latest-activity', (req, res) => {
+  const latestCheckedIn = Object.keys(attendeesDb)
+    .map(id => ({ id, ...attendeesDb[id] }))
+    .filter(a => a.status === 'CHECKED_IN' || a.status === 'PENDING_PRINT')
+    .sort((a, b) => new Date(b.checkedInAt || 0) - new Date(a.checkedInAt || 0))[0];
+
+  res.status(200).json({ latest: latestCheckedIn || null });
+});
+
 // Internal Webhook State Transition Logic
 function executeWebhookStateUpdate(jobId, attendeeId, printSuccess) {
   const attendee = attendeesDb[attendeeId];
