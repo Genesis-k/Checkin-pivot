@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Solstice Events • Attendee Kiosk</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <!-- QRCode Library -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <style>
+    :root {
+      --bg: #090d16;
+      --card-bg: rgba(18, 26, 43, 0.8);
+      --card-border: rgba(255, 255, 255, 0.08);
+      --accent: #6366f1;
+      --accent-glow: rgba(99, 102, 241, 0.35);
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Plus Jakarta Sans', sans-serif; }
+    
+    body {
+      background: radial-gradient(circle at top right, #1e1b4b 0%, #090d16 60%, #030712 100%);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 1.5rem;
+    }
+
+    .dashboard-container {
+      display: grid;
+      grid-template-columns: 1.15fr 1fr;
+      gap: 1.5rem;
+      width: 100%;
+      max-width: 1050px;
+      backdrop-filter: blur(16px);
+    }
+
+    @media (max-width: 800px) {
+      .dashboard-container { grid-template-columns: 1fr; }
+    }
+
+    .panel {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 1.75rem;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+    }
+
+    .header-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #818cf8;
+      background: rgba(99, 102, 241, 0.15);
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-weight: 700;
+      width: fit-content;
+    }
+
+    h1 { font-size: 1.5rem; font-weight: 800; letter-spacing: -0.02em; }
+    p.lead { color: var(--text-muted); font-size: 0.85rem; line-height: 1.4; }
+
+    /* Attendee Roster */
+    .roster-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .roster-card {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 0.9rem 1.1rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: pointer;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .roster-card:hover {
+      background: rgba(99, 102, 241, 0.12);
+      border-color: var(--accent);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 20px var(--accent-glow);
+    }
+
+    .roster-info strong { display: block; font-size: 0.95rem; }
+    .roster-info span { font-size: 0.75rem; color: var(--text-muted); font-family: 'JetBrains Mono', monospace; }
+
+    .open-ticket-tag {
+      font-size: 0.75rem;
+      color: #818cf8;
+      background: rgba(99, 102, 241, 0.1);
+      padding: 4px 8px;
+      border-radius: 6px;
+      font-weight: 600;
+    }
+
+    /* Modal Popup Styles */
+    .modal-overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(3, 7, 18, 0.8);
+      backdrop-filter: blur(8px);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+      padding: 1rem;
+    }
+
+    .modal-overlay.active { display: flex; }
+
+    .ticket-modal {
+      background: #111827;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 18px;
+      padding: 2rem;
+      width: 100%;
+      max-width: 380px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      gap: 1.25rem;
+      position: relative;
+      box-shadow: 0 25px 50px rgba(0, 0, 0, 0.6);
+      animation: popIn 0.2s ease-out;
+    }
+
+    @keyframes popIn {
+      from { transform: scale(0.92); opacity: 0; }
+      to { transform: scale(1); opacity: 1; }
+    }
+
+    .close-btn {
+      position: absolute;
+      top: 1rem; right: 1rem;
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      font-size: 1.25rem;
+      cursor: pointer;
+    }
+
+    .qr-container {
+      background: white;
+      padding: 12px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 10px 20px rgba(0, 0, 0, 0.3);
+    }
+
+    .scan-btn {
+      background: var(--accent);
+      color: white;
+      border: none;
+      padding: 0.85rem 1.5rem;
+      border-radius: 10px;
+      font-weight: 700;
+      font-size: 0.95rem;
+      cursor: pointer;
+      width: 100%;
+      transition: 0.2s;
+    }
+    .scan-btn:hover { background: #4f46e5; }
+
+    /* Right Preview Panel */
+    .badge-preview {
+      border: 1px dashed var(--card-border);
+      border-radius: 14px;
+      padding: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      min-height: 160px;
+      background: rgba(0, 0, 0, 0.2);
+    }
+
+    .status-pill {
+      padding: 6px 14px;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      margin-top: 10px;
+      display: inline-block;
+    }
+
+    .STATUS_IDLE { background: rgba(255, 255, 255, 0.05); color: var(--text-muted); }
+    .STATUS_PENDING { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); animation: pulse 1.2s infinite; }
+    .STATUS_SUCCESS { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); }
+    .STATUS_ERROR { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }
+
+    .terminal-window {
+      background: #030712;
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      padding: 0.75rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.72rem;
+      height: 140px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .log-line { color: #64748b; line-height: 1.4; }
+    .log-line.event { color: #38bdf8; }
+    .log-line.success { color: #4ade80; }
+    .log-line.warn { color: #fbbf24; }
+    .log-line.err { color: #f87171; }
+
+    .admin-controls { display: flex; justify-content: flex-end; }
+    .reset-btn {
+      background: transparent;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: var(--text-muted);
+      padding: 4px 8px;
+      font-size: 0.7rem;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .reset-btn:hover { color: var(--text); border-color: var(--text); }
+
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+  </style>
+</head>
+<body>
+
+  <div class="dashboard-container">
+    <!-- LEFT PANEL: ATTENDEE ROSTER -->
+    <div class="panel">
+      <span class="header-badge">Solstice Conf • Kiosk Roster</span>
+      <h1>Select Attendee</h1>
+      <p class="lead">Click on an attendee to view their digital ticket QR code.</p>
+
+      <div class="roster-list">
+        <!-- Alice Mwangi -->
+        <div class="roster-card" onclick="openTicketModal('ATT_001', 'Alice Mwangi', 'VIP Pass')">
+          <div class="roster-info">
+            <strong>Alice Mwangi</strong>
+            <span>ATT_001 • VIP Pass</span>
+          </div>
+          <span class="open-ticket-tag">View Ticket 🎫</span>
+        </div>
+
+        <!-- Bob Otieno -->
+        <div class="roster-card" onclick="openTicketModal('ATT_002', 'Bob Otieno', 'Speaker')">
+          <div class="roster-info">
+            <strong>Bob Otieno</strong>
+            <span>ATT_002 • Speaker Pass</span>
+          </div>
+          <span class="open-ticket-tag">View Ticket 🎫</span>
+        </div>
+
+        <!-- Charlie Kamau -->
+        <div class="roster-card" onclick="openTicketModal('ATT_003', 'Charlie Kamau', 'General Admission')">
+          <div class="roster-info">
+            <strong>Charlie Kamau</strong>
+            <span>ATT_003 • General Admission</span>
+          </div>
+          <span class="open-ticket-tag">View Ticket 🎫</span>
+        </div>
+
+        <!-- Negative Test: Unregistered Guest -->
+        <div class="roster-card" style="border-color: rgba(239, 68, 68, 0.25);" onclick="openTicketModal('ATT_999', 'Unregistered Guest', 'Invalid Pass')">
+          <div class="roster-info">
+            <strong style="color: #f87171;">Unregistered Guest</strong>
+            <span>ATT_999 • [Test Negative Access]</span>
+          </div>
+          <span class="open-ticket-tag" style="color: #f87171; background: rgba(239, 68, 68, 0.1);">Test Denial 🚫</span>
+        </div>
+      </div>
+
+      <div class="admin-controls">
+        <button class="reset-btn" onclick="resetDb()">↺ Reset Database</button>
+      </div>
+    </div>
+
+    <!-- RIGHT PANEL: BADGE & LIVE TELEMETRY -->
+    <div class="panel">
+      <div class="badge-preview" id="badgePreview">
+        <div style="font-size: 2rem; margin-bottom: 0.4rem;" id="badgeIcon">🎫</div>
+        <h3 id="badgeName" style="font-size: 1.05rem;">Waiting for Scan</h3>
+        <p id="badgeSub" style="font-size: 0.8rem; color: var(--text-muted);">Badge printer standing by</p>
+        <span class="status-pill STATUS_IDLE" id="badgeStatus">READY</span>
+      </div>
+
+      <div>
+        <div style="font-size: 0.75rem; font-weight: 700; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.05em;">
+          System Telemetry Logs
+        </div>
+        <div class="terminal-window" id="terminalLogs">
+          <div class="log-line">[SYSTEM] Async Queue & Webhook Callback Service Active.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: DIGITAL TICKET POPUP -->
+  <div class="modal-overlay" id="ticketModal">
+    <div class="ticket-modal">
+      <button class="close-btn" onclick="closeTicketModal()">✕</button>
+      <div>
+        <h3 id="modalName" style="font-size: 1.2rem;">Attendee Name</h3>
+        <p id="modalTicket" style="font-size: 0.8rem; color: var(--text-muted); font-family: 'JetBrains Mono', monospace;">Pass Type</p>
+      </div>
+
+      <div class="qr-container" id="modalQrCode"></div>
+
+      <button class="scan-btn" id="modalScanBtn" onclick="triggerModalScan()">⚡ Scan Ticket at Kiosk</button>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
