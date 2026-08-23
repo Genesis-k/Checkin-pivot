@@ -7,12 +7,12 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <!-- QRCode Library -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <!-- Bundled QR Code Library -->
+  <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
   <style>
     :root {
       --bg: #090d16;
-      --card-bg: rgba(18, 26, 43, 0.8);
+      --card-bg: rgba(18, 26, 43, 0.85);
       --card-border: rgba(255, 255, 255, 0.08);
       --accent: #6366f1;
       --accent-glow: rgba(99, 102, 241, 0.35);
@@ -77,12 +77,7 @@
     h1 { font-size: 1.5rem; font-weight: 800; letter-spacing: -0.02em; }
     p.lead { color: var(--text-muted); font-size: 0.85rem; line-height: 1.4; }
 
-    /* Attendee Roster */
-    .roster-list {
-      display: flex;
-      flex-direction: column;
-      gap: 0.75rem;
-    }
+    .roster-list { display: flex; flex-direction: column; gap: 0.75rem; }
 
     .roster-card {
       background: rgba(255, 255, 255, 0.03);
@@ -115,11 +110,11 @@
       font-weight: 600;
     }
 
-    /* Modal Popup Styles */
+    /* Modal */
     .modal-overlay {
       position: fixed;
       top: 0; left: 0; right: 0; bottom: 0;
-      background: rgba(3, 7, 18, 0.8);
+      background: rgba(3, 7, 18, 0.85);
       backdrop-filter: blur(8px);
       display: none;
       justify-content: center;
@@ -144,12 +139,6 @@
       gap: 1.25rem;
       position: relative;
       box-shadow: 0 25px 50px rgba(0, 0, 0, 0.6);
-      animation: popIn 0.2s ease-out;
-    }
-
-    @keyframes popIn {
-      from { transform: scale(0.92); opacity: 0; }
-      to { transform: scale(1); opacity: 1; }
     }
 
     .close-btn {
@@ -169,7 +158,8 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      box-shadow: 0 10px 20px rgba(0, 0, 0, 0.3);
+      min-width: 164px;
+      min-height: 164px;
     }
 
     .scan-btn {
@@ -252,14 +242,13 @@
 <body>
 
   <div class="dashboard-container">
-    <!-- LEFT PANEL: ATTENDEE ROSTER -->
+    <!-- LEFT PANEL -->
     <div class="panel">
       <span class="header-badge">Solstice Conf • Kiosk Roster</span>
       <h1>Select Attendee</h1>
-      <p class="lead">Click on an attendee to view their digital ticket QR code.</p>
+      <p class="lead">Click an attendee to view their live scannable QR ticket.</p>
 
       <div class="roster-list">
-        <!-- Alice Mwangi -->
         <div class="roster-card" onclick="openTicketModal('ATT_001', 'Alice Mwangi', 'VIP Pass')">
           <div class="roster-info">
             <strong>Alice Mwangi</strong>
@@ -268,7 +257,6 @@
           <span class="open-ticket-tag">View Ticket 🎫</span>
         </div>
 
-        <!-- Bob Otieno -->
         <div class="roster-card" onclick="openTicketModal('ATT_002', 'Bob Otieno', 'Speaker')">
           <div class="roster-info">
             <strong>Bob Otieno</strong>
@@ -277,7 +265,6 @@
           <span class="open-ticket-tag">View Ticket 🎫</span>
         </div>
 
-        <!-- Charlie Kamau -->
         <div class="roster-card" onclick="openTicketModal('ATT_003', 'Charlie Kamau', 'General Admission')">
           <div class="roster-info">
             <strong>Charlie Kamau</strong>
@@ -286,7 +273,6 @@
           <span class="open-ticket-tag">View Ticket 🎫</span>
         </div>
 
-        <!-- Negative Test: Unregistered Guest -->
         <div class="roster-card" style="border-color: rgba(239, 68, 68, 0.25);" onclick="openTicketModal('ATT_999', 'Unregistered Guest', 'Invalid Pass')">
           <div class="roster-info">
             <strong style="color: #f87171;">Unregistered Guest</strong>
@@ -301,7 +287,7 @@
       </div>
     </div>
 
-    <!-- RIGHT PANEL: BADGE & LIVE TELEMETRY -->
+    <!-- RIGHT PANEL -->
     <div class="panel">
       <div class="badge-preview" id="badgePreview">
         <div style="font-size: 2rem; margin-bottom: 0.4rem;" id="badgeIcon">🎫</div>
@@ -321,7 +307,7 @@
     </div>
   </div>
 
-  <!-- MODAL: DIGITAL TICKET POPUP -->
+  <!-- MODAL -->
   <div class="modal-overlay" id="ticketModal">
     <div class="ticket-modal">
       <button class="close-btn" onclick="closeTicketModal()">✕</button>
@@ -332,10 +318,149 @@
 
       <div class="qr-container" id="modalQrCode"></div>
 
-      <button class="scan-btn" id="modalScanBtn" onclick="triggerModalScan()">⚡ Scan Ticket at Kiosk</button>
+      <button class="scan-btn" onclick="triggerModalScan()">⚡ Simulate Kiosk Scan</button>
     </div>
   </div>
 
-  <script src="/app.js"></script>
+  <script>
+    let currentSelectedAttendeeId = null;
+
+    function addLog(msg, type = '') {
+      const logs = document.getElementById('terminalLogs');
+      const time = new Date().toLocaleTimeString();
+      const div = document.createElement('div');
+      div.className = `log-line ${type}`;
+      div.innerText = `[${time}] ${msg}`;
+      logs.appendChild(div);
+      logs.scrollTop = logs.scrollHeight;
+    }
+
+    function openTicketModal(attendeeId, name, ticketType) {
+      currentSelectedAttendeeId = attendeeId;
+      document.getElementById('modalName').innerText = name;
+      document.getElementById('modalTicket').innerText = `${ticketType} • ID: ${attendeeId}`;
+
+      const qrContainer = document.getElementById('modalQrCode');
+      qrContainer.innerHTML = '';
+
+      // Direct scan link that works over the cloud
+      const directScanUrl = `${window.location.origin}/api/kiosk/direct-scan?attendeeId=${attendeeId}`;
+
+      try {
+        new QRCode(qrContainer, {
+          text: directScanUrl,
+          width: 140,
+          height: 140,
+          colorDark: "#000000",
+          colorLight: "#ffffff",
+          correctLevel: QRCode.CorrectLevel.M
+        });
+      } catch (err) {
+        console.error("QR Code library error:", err);
+      }
+
+      document.getElementById('ticketModal').classList.add('active');
+    }
+
+    function closeTicketModal() {
+      document.getElementById('ticketModal').classList.remove('active');
+    }
+
+    function triggerModalScan() {
+      if (!currentSelectedAttendeeId) return;
+      const id = currentSelectedAttendeeId;
+      closeTicketModal();
+      executeCheckIn(id);
+    }
+
+    async function executeCheckIn(attendeeId) {
+      const bIcon = document.getElementById('badgeIcon');
+      const bName = document.getElementById('badgeName');
+      const bSub = document.getElementById('badgeSub');
+      const bStatus = document.getElementById('badgeStatus');
+
+      bName.innerText = "Dispatching Job...";
+      bSub.innerText = `Queueing print for ${attendeeId}`;
+      bStatus.className = "status-pill STATUS_PENDING";
+      bStatus.innerText = "QUEUED / PRINTING ⏳";
+      bIcon.innerText = "⚙️";
+
+      addLog(`[SCAN DETECTED] Code: ${attendeeId}`, 'event');
+
+      try {
+        const res = await fetch('/api/kiosk/scan', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ attendeeId })
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+          bIcon.innerText = "⛔";
+          bName.innerText = res.status === 404 ? "ACCESS REJECTED" : "SCAN BLOCKED";
+          bSub.innerText = data.error;
+          bStatus.className = "status-pill STATUS_ERROR";
+          bStatus.innerText = res.status === 404 ? "UNREGISTERED" : "DUPLICATE BLOCKED";
+          addLog(`[${res.status} BLOCKED] ${data.error}`, 'err');
+          return;
+        }
+
+        bName.innerText = data.name;
+        bSub.innerText = `Job ${data.jobId} enqueued. Awaiting callback...`;
+        addLog(`[202 ACCEPTED] Job ${data.jobId} queued. Reflecting PENDING state.`, 'warn');
+
+        // Polling for confirmation
+        const poller = setInterval(async () => {
+          const check = await fetch(`/api/kiosk/status/${attendeeId}`);
+          const att = await check.json();
+
+          if (att.status === 'CHECKED_IN') {
+            clearInterval(poller);
+            bIcon.innerText = "✅";
+            bName.innerText = att.name;
+            bSub.innerText = `Badge Printed • Checked In at ${new Date(att.checkedInAt).toLocaleTimeString()}`;
+            bStatus.className = "status-pill STATUS_SUCCESS";
+            bStatus.innerText = "BADGE PRINTED / CHECKED IN";
+            addLog(`[WEBHOOK SUCCESS] Print confirmed for ${att.name}. Status -> CHECKED_IN.`, 'success');
+          }
+        }, 400);
+
+      } catch (err) {
+        bStatus.className = "status-pill STATUS_ERROR";
+        bStatus.innerText = "NETWORK ERROR";
+        addLog(`Network failed: ${err.message}`, 'err');
+      }
+    }
+
+    // Live Polling on the main dashboard so phone scans trigger screen updates automatically
+    setInterval(async () => {
+      if (!currentSelectedAttendeeId) return;
+      const bStatus = document.getElementById('badgeStatus');
+      if (bStatus.innerText.includes("CHECKED IN")) return;
+
+      const res = await fetch(`/api/kiosk/status/${currentSelectedAttendeeId}`);
+      if (res.ok) {
+        const att = await res.json();
+        if (att.status === 'CHECKED_IN' && !bStatus.innerText.includes("CHECKED IN")) {
+          document.getElementById('badgeIcon').innerText = "✅";
+          document.getElementById('badgeName').innerText = att.name;
+          document.getElementById('badgeSub').innerText = `Badge Printed via Mobile Scan at ${new Date(att.checkedInAt).toLocaleTimeString()}`;
+          bStatus.className = "status-pill STATUS_SUCCESS";
+          bStatus.innerText = "BADGE PRINTED / CHECKED IN";
+          addLog(`[PHONE SCAN CONFIRMED] Webhook finalized for ${att.name}.`, 'success');
+        }
+      }
+    }, 800);
+
+    async function resetDb() {
+      await fetch('/api/admin/reset', { method: 'POST' });
+      addLog("[ADMIN] Database reset to initial test state.", 'event');
+      document.getElementById('badgeIcon').innerText = "🎫";
+      document.getElementById('badgeName').innerText = "Waiting for Scan";
+      document.getElementById('badgeSub').innerText = "Badge printer standing by";
+      document.getElementById('badgeStatus').className = "status-pill STATUS_IDLE";
+      document.getElementById('badgeStatus').innerText = "READY";
+    }
+  </script>
 </body>
 </html>

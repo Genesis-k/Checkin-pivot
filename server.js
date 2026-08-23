@@ -1,12 +1,14 @@
-// server.js - Solstice Events Async Badge Printing & Webhook Service
+// server.js - Solstice Events Async Badge Printing Service
 const express = require('express');
 const path = require('path');
 
 const app = express();
-app.use(express.json());
-app.use(express.static(__dirname));
 
-// Serve Kiosk UI
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(express.static(path.join(__dirname)));
+
+// Serve static HTML frontend
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
@@ -21,24 +23,7 @@ const defaultDb = () => ({
 let attendeesDb = defaultDb();
 const printQueue = [];
 
-// 1. SEARCH DIRECTORY ENDPOINT
-app.get('/api/kiosk/search', (req, res) => {
-  const query = (req.query.q || '').toLowerCase();
-  const results = Object.keys(attendeesDb)
-    .filter(id => {
-      const att = attendeesDb[id];
-      return (
-        att.name.toLowerCase().includes(query) ||
-        id.toLowerCase().includes(query) ||
-        att.ticketType.toLowerCase().includes(query)
-      );
-    })
-    .map(id => ({ id, ...attendeesDb[id] }));
-
-  res.status(200).json(results);
-});
-
-// 2. KIOSK SCAN & DISPATCH ENDPOINT
+// 1. KIOSK SCAN ENDPOINT (On-Screen Button Ingestion)
 app.post('/api/kiosk/scan', (req, res) => {
   const { attendeeId } = req.body;
   const attendee = attendeesDb[attendeeId];
@@ -56,7 +41,7 @@ app.post('/api/kiosk/scan', (req, res) => {
   }
 
   attendee.status = "PENDING_PRINT";
-  const jobId = `JOB_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+  const jobId = `JOB_${Date.now()}`;
   printQueue.push({ jobId, attendeeId, requestedAt: new Date().toISOString() });
 
   res.status(202).json({
@@ -67,33 +52,102 @@ app.post('/api/kiosk/scan', (req, res) => {
     uiStatus: "PENDING_PRINT"
   });
 
-  // Emulate asynchronous printer delay before webhook callback
+  // Trigger internal async webhook processing after delay
   setTimeout(() => {
-    dispatchVendorWebhookCallback(jobId, attendeeId);
-  }, 1400);
+    executeWebhookStateUpdate(jobId, attendeeId, true);
+  }, 1200);
 });
 
-// 3. VENDOR WEBHOOK RECEIVER
-app.post('/api/webhooks/printer-callback', (req, res) => {
-  const { jobId, attendeeId, printSuccess } = req.body;
+// 2. DIRECT PHONE QR SCAN ENDPOINT (Triggered when phone camera opens the link)
+app.get('/api/kiosk/direct-scan', (req, res) => {
+  const { attendeeId } = req.query;
   const attendee = attendeesDb[attendeeId];
 
   if (!attendee) {
-    return res.status(404).json({ error: "Attendee record not found." });
+    return res.send(`
+      <!DOCTYPE html>
+      <html>
+      <head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Access Denied</title></head>
+      <body style="background:#090d16;color:#ef4444;font-family:-apple-system,sans-serif;text-align:center;padding:3rem 1.5rem;">
+        <div style="background:#1e293b;padding:2rem;border-radius:16px;max-width:400px;margin:auto;border:1px solid #ef4444;">
+          <h1 style="font-size:3rem;margin:0;">⛔</h1>
+          <h2>Access Denied</h2>
+          <p style="color:#94a3b8;">Unregistered or invalid QR code: <code>${attendeeId || 'UNKNOWN'}</code></p>
+        </div>
+      </body>
+      </html>
+    `);
   }
 
-  if (printSuccess) {
-    attendee.status = "CHECKED_IN";
-    attendee.badgePrinted = true;
-    attendee.checkedInAt = new Date().toISOString();
-    return res.status(200).json({ status: "ACKNOWLEDGED", currentStatus: attendee.status });
+  if (attendee.status === "PENDING_PRINT") {
+    return res.send(`
+      <!DOCTYPE html>
+      <html>
+      <head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Processing</title></head>
+      <body style="background:#090d16;color:#fbbf24;font-family:-apple-system,sans-serif;text-align:center;padding:3rem 1.5rem;">
+        <div style="background:#1e293b;padding:2rem;border-radius:16px;max-width:400px;margin:auto;border:1px solid #fbbf24;">
+          <h1 style="font-size:3rem;margin:0;">⏳</h1>
+          <h2>Print In Progress</h2>
+          <p style="color:#94a3b8;">Badge for <strong>${attendee.name}</strong> is already queued.</p>
+        </div>
+      </body>
+      </html>
+    `);
+  }
+
+  if (attendee.status === "CHECKED_IN" || attendee.badgePrinted) {
+    return res.send(`
+      <!DOCTYPE html>
+      <html>
+      <head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Duplicate Scan</title></head>
+      <body style="background:#090d16;color:#ef4444;font-family:-apple-system,sans-serif;text-align:center;padding:3rem 1.5rem;">
+        <div style="background:#1e293b;padding:2rem;border-radius:16px;max-width:400px;margin:auto;border:1px solid #ef4444;">
+          <h1 style="font-size:3rem;margin:0;">🚫</h1>
+          <h2>Duplicate Scan Blocked</h2>
+          <p style="color:#94a3b8;"><strong>${attendee.name}</strong> is already checked in!</p>
+        </div>
+      </body>
+      </html>
+    `);
+  }
+
+  // Queue print job and mark pending
+  attendee.status = "PENDING_PRINT";
+  const jobId = `JOB_${Date.now()}`;
+  printQueue.push({ jobId, attendeeId, requestedAt: new Date().toISOString() });
+
+  setTimeout(() => {
+    executeWebhookStateUpdate(jobId, attendeeId, true);
+  }, 1200);
+
+  res.send(`
+    <!DOCTYPE html>
+    <html>
+    <head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Check-In Confirmed</title></head>
+    <body style="background:#090d16;color:#10b981;font-family:-apple-system,sans-serif;text-align:center;padding:3rem 1.5rem;">
+      <div style="background:#1e293b;padding:2rem;border-radius:16px;max-width:400px;margin:auto;border:1px solid #10b981;">
+        <h1 style="font-size:3rem;margin:0;">✅</h1>
+        <h2>Scan Confirmed!</h2>
+        <p style="color:#f8fafc;font-size:1.1rem;margin:0.5rem 0;">Welcome, <strong>${attendee.name}</strong></p>
+        <p style="color:#94a3b8;font-size:0.85rem;">Badge print job published to message queue. Kiosk is printing your pass.</p>
+      </div>
+    </body>
+    </html>
+  `);
+});
+
+// 3. VENDOR WEBHOOK RECEIVER (POST endpoint for standard webhook callbacks)
+app.post('/api/webhooks/printer-callback', (req, res) => {
+  const { jobId, attendeeId, printSuccess } = req.body;
+  const result = executeWebhookStateUpdate(jobId, attendeeId, printSuccess);
+  if (result.success) {
+    return res.status(200).json({ status: "ACKNOWLEDGED", currentStatus: result.status });
   } else {
-    attendee.status = "NOT_CHECKED_IN";
-    return res.status(500).json({ status: "PRINT_FAILED" });
+    return res.status(result.code).json({ error: result.error });
   }
 });
 
-// 4. STATUS QUERY ENDPOINT
+// 4. STATUS QUERY ENDPOINT (Frontend polling)
 app.get('/api/kiosk/status/:attendeeId', (req, res) => {
   const attendee = attendeesDb[req.params.attendeeId];
   if (!attendee) return res.status(404).json({ error: "Not found" });
@@ -107,21 +161,26 @@ app.post('/api/admin/reset', (req, res) => {
   res.status(200).json({ message: "Reset complete" });
 });
 
-// Helper: Dispatches Webhook POST Callback
-async function dispatchVendorWebhookCallback(jobId, attendeeId) {
-  try {
-    const port = process.env.PORT || 3000;
-    await fetch(`http://localhost:${port}/api/webhooks/printer-callback`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ jobId, attendeeId, printSuccess: true })
-    });
-  } catch (err) {
-    console.error("Webhook callback trigger error:", err.message);
+// Internal Webhook State Transition Logic
+function executeWebhookStateUpdate(jobId, attendeeId, printSuccess) {
+  const attendee = attendeesDb[attendeeId];
+  if (!attendee) return { success: false, code: 404, error: "Attendee not found" };
+
+  if (printSuccess) {
+    attendee.status = "CHECKED_IN";
+    attendee.badgePrinted = true;
+    attendee.checkedInAt = new Date().toISOString();
+    attendee.lastJobId = jobId;
+    return { success: true, status: attendee.status };
+  } else {
+    attendee.status = "NOT_CHECKED_IN";
+    return { success: false, code: 500, error: "Print failed" };
   }
 }
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`Solstice Kiosk Service running on http://localhost:${PORT}`);
+  console.log(`Solstice Kiosk live on port ${PORT}`);
 });
+
+module.exports = app;
